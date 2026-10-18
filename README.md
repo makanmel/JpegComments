@@ -36,5 +36,14 @@ python jpeg_comments.py "C:\Users\User\Pictures\Scans"
 - `--quality` - JPEG quality, 1-100 (default: 95)
 - `--list` - print comments only, do not write images
 
+## Minimal UI
+
+A small tkinter window (folder picker, quality, List / Burn buttons, log pane)
+is available with:
+
+```bat
+python jpeg_comments_ui.py
+```
+
 Existing EXIF data, ICC profile and the original hidden comment are preserved
 in the output files.
