@@ -12,7 +12,6 @@ import os
 from PIL import Image, ImageDraw, ImageFont
 
 COM_MARKER = b"\xff\xfe"  # JPEG comment segment
-SOS_MARKER = b"\xff\xda"  # Start of Scan - comments always live before it
 
 DEFAULT_FONT_PATH = r"C:\Windows\Fonts\arial.ttf"
 MIN_FONT_SIZE = 12
@@ -20,26 +19,37 @@ JPEG_EXTENSIONS = (".jpg", ".jpeg")
 
 
 def find_comment_blocks(data):
-    """Return raw byte contents of every JPEG COM segment before SOS."""
-    sos = data.find(SOS_MARKER)
-    area = data if sos == -1 else data[:sos]
+    """Return raw byte contents of every JPEG COM segment in the file.
+
+    FastStone writes the comment after the SOS marker inside the scan
+    region, so the whole file must be scanned, not just the header.
+    """
     blocks = []
     index = 0
     while True:
-        index = area.find(COM_MARKER, index)
-        if index == -1 or index + 4 > len(area):
+        index = data.find(COM_MARKER, index)
+        if index == -1 or index + 4 > len(data):
             return blocks
-        length = int.from_bytes(area[index + 2:index + 4], "big")
-        blocks.append(area[index + 4:index + 2 + length])
-        index += 2 + max(length, 2)
+        length = int.from_bytes(data[index + 2:index + 4], "big")
+        if length < 2 or index + 2 + length > len(data):
+            index += 2
+            continue
+        blocks.append(data[index + 4:index + 2 + length])
+        index += 2 + length
 
 
 def decode_comment(raw):
-    """Prefer UTF-8; fall back to Windows-1251 (FastStone ANSI comments)."""
+    """Prefer UTF-8; fall back to Windows-1251 (FastStone ANSI comments).
+
+    Returns "" for blocks that don't decode to plausible text - a stray
+    0xFFFE inside compressed scan data would otherwise yield garbage.
+    """
     text = raw.decode("utf-8", errors="surrogateescape")
     if any("\udc80" <= ch <= "\udcff" for ch in text):
         text = raw.decode("cp1251", errors="replace")
-    return text.strip("\x00").strip()
+    text = text.strip("\x00").strip()
+    plausible = all(ch.isprintable() or ch in "\t\n\r" for ch in text)
+    return text if plausible and "\ufffd" not in text else ""
 
 
 def get_jpeg_comment(path):
